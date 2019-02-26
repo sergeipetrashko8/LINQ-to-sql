@@ -5,13 +5,7 @@
 //Copyright (C) Microsoft Corporation.  All rights reserved.
 
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Data.Odbc;
-using System.IO;
 using System.Linq;
-using System.Windows.Forms;
-using System.Xml.Linq;
 using SampleSupport;
 using Task.Data;
 
@@ -244,88 +238,161 @@ namespace SampleQueries
             }
         }
 
-        //[Category("Task")]
-        //[Title("Task 006")]
-        //[Description("Displays all customers with not number postal code or without region " +
-        //             "or whithout operator's code")]
-        //public void Linq006()
-        //{
-        //    var customers = dataSource.Customers.Where(
-        //        c => c.PostalCode != null && c.PostalCode.Any(sym => sym < '0' || sym > '9')
-        //             || string.IsNullOrWhiteSpace(c.Region)
-        //             || c.Phone.FirstOrDefault() != '(');
-
-        //    foreach (var c in customers)
-        //    {
-        //        ObjectDumper.Write(c);
-        //    }
-        //}
-
-
-
-
-
-
-        // todo
+        // done 7
         [Category("Restriction Operators")]
         [Title("Where - Task 11")]
-        [Description("This sample returns ")]
+        [Description("This sample returns groups of products by categories then by units in stock > 0  then order by unitPrice")]
         public void Linq11()
         {
-            decimal X = 100m;
+            var productGroups =
+                from g in (
+                    from p in dataSource.Products
+                    group p by p.Category
+                    into gr
+                    select gr)
+                select new
+                {
+                    Category = g.Key,
+                    ProductsByStock =
+                        from g1 in (
+                            from p in g
+                            group p by p.UnitsInStock > 0
+                            into gr
+                            select gr)
+                        select new 
+                        {
+                            IsInStock = g1.Key,
+                            Products = from g2 in g1
+                                        orderby g2.UnitPrice
+                                        select g2
+                        }
+                };
 
-            var customers =
-                from c in dataSource.Customers
-                where (from or in c.Orders
-                    where or.Total > X
-                    select or).Any()
-                select c.CustomerID;
-
-            foreach (var c in customers)
+            foreach (var productsByCategory in productGroups)
             {
-                ObjectDumper.Write($"CustomerId: {c}");
+                ObjectDumper.Write($"Category: {productsByCategory.Category}\n");
+                foreach (var productsByStock in productsByCategory.ProductsByStock)
+                {
+                    ObjectDumper.Write($"\tHas in stock: {productsByStock.IsInStock}");
+                    foreach (var product in productsByStock.Products)
+                    {
+                        ObjectDumper.Write($"\t\tProduct: {product.ProductName} Price: {product.UnitPrice}");
+                    }
+                }
             }
         }
 
-        // todo
+        // done 8
         [Category("Restriction Operators")]
         [Title("Where - Task 12")]
-        [Description("This sample returns ")]
+        [Description("This sample returns grouped products by price: Cheap, Average price, Expensive")]
         public void Linq12()
         {
-            decimal X = 100m;
+            decimal cheap = 20;
+            decimal average = 50;
 
-            var customers =
-                from c in dataSource.Customers
-                where (from or in c.Orders
-                    where or.Total > X
-                    select or).Any()
-                select c.CustomerID;
+            var groupsByPrice =
+                from p in dataSource.Products
+                group p by p.UnitPrice < cheap ? "Cheap" :
+                    p.UnitPrice < average ? "Average" : "Expensive" 
+                into groups
+                select groups;
 
-            foreach (var c in customers)
+            foreach (var group in groupsByPrice)
             {
-                ObjectDumper.Write($"CustomerId: {c}");
+                ObjectDumper.Write($"{group.Key}:");
+                foreach (var product in group)
+                {
+                    ObjectDumper.Write($"\tProduct: {product.ProductName} Price: {product.UnitPrice}\n");
+                }
+            }
+
+        }
+
+        // done 9
+        [Category("Restriction Operators")]
+        [Title("Where - Task 13")]
+        [Description("This sample returns average order sum for and average client's intensity for every city")]
+        public void Linq13()
+        {
+            var result =
+                from g in (
+                    from p in dataSource.Customers
+                    group p by p.City
+                    into groups
+                    select groups)
+                select new
+                {
+                    City = g.Key,
+                    Intensity = g.Average(c => c.Orders.Length),
+                    AverageIncome = g.Average(c => c.Orders.Sum(ord => ord.Total))
+                };
+
+            foreach (var group in result)
+            {
+                ObjectDumper.Write($"City: {group.City}");
+                ObjectDumper.Write($"\tIntensity: {group.Intensity}");
+                ObjectDumper.Write($"\tAverage Income: {group.AverageIncome}");
             }
         }
 
-        //public void Linq005()
-        //{
-        //    var customers = dataSource.Customers.Where(c => c.Orders.Any())
-        //        .Select(c => new
-        //        {
-        //            CustomerId = c.CustomerID,
-        //            StartDate = c.Orders.OrderBy(o => o.OrderDate).Select(o => o.OrderDate).First(),
-        //            TotalSum = c.Orders.Sum(o => o.Total)
-        //        }).OrderByDescending(c => c.StartDate.Year)
-        //        .ThenByDescending(c => c.StartDate.Month)
-        //        .ThenByDescending(c => c.TotalSum)
-        //        .ThenByDescending(c => c.CustomerId);
+        // done 10
+        [Category("Restriction Operators")]
+        [Title("Where - Task 14")]
+        [Description("This sample returns clients activity statistic by month(without year), by year and by year and month")]
+        public void Linq14()
+        {
+            var stat =
+                from cust in dataSource.Customers
+                select new
+                {
+                    CustomerId = cust.CustomerID,
+                    MonthStat = 
+                        from o in cust.Orders
+                        group o by o.OrderDate.Month into gr
+                        select new
+                        {
+                            Month = gr.Key,
+                            OrdersCount = gr.Count()
+                        },
+                    YearStat =
+                        from o in cust.Orders
+                        group o by o.OrderDate.Year into gr
+                        select new
+                        {
+                            Year = gr.Key,
+                            OrdersCount = gr.Count()
+                        },
+                    YearMonthStat =
+                        from o in cust.Orders
+                        group o by new { o.OrderDate.Month, o.OrderDate.Year } into gr
+                        select new
+                        {
+                            gr.Key.Year,
+                            gr.Key.Month,
+                            OrdersCount = gr.Count()
+                        }
+                };
 
-        //    foreach (var c in customers)
-        //    {
-        //        ObjectDumper.Write($"CustomerId = {c.CustomerId} TotalSum: {c.TotalSum} " +
-        //                           $"Month = {c.StartDate.Month} Year = {c.StartDate.Year}");
-        //    }
-        //}
+            foreach (var record in stat)
+            {
+                ObjectDumper.Write($"CustomerId: {record.CustomerId}");
+                ObjectDumper.Write("\tMonths statistic:\n");
+                foreach (var ms in record.MonthStat)
+                {
+                    ObjectDumper.Write($"\t\tMonth: {ms.Month} Orders count: {ms.OrdersCount}");
+                }
+                ObjectDumper.Write("\tYears statistic:\n");
+                foreach (var ys in record.YearStat)
+                {
+                    ObjectDumper.Write($"\t\tYear: {ys.Year} Orders count: {ys.OrdersCount}");
+                }
+                ObjectDumper.Write("\tYear and month statistic:\n");
+                foreach (var ym in record.YearMonthStat)
+                {
+                    ObjectDumper.Write($"\t\tYear: {ym.Year} Month: {ym.Month} Orders count: {ym.OrdersCount}");
+                }
+            }
+        }
     }
 }
